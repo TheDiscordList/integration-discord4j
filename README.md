@@ -11,12 +11,12 @@ Jackson that Discord4J already ships.
 <dependency>
     <groupId>com.thediscordlist</groupId>
     <artifactId>integration-discord4j</artifactId>
-    <version>0.1.0</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
 ```kotlin
-implementation("com.thediscordlist:integration-discord4j:0.1.0")
+implementation("com.thediscordlist:integration-discord4j:0.2.0")
 ```
 
 ## Quickstart
