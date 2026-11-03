@@ -12,6 +12,7 @@ import discord4j.gateway.GatewayConnection.State;
 import discord4j.gateway.ShardInfo;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -19,10 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TheDiscordListTest {
 
@@ -106,6 +110,21 @@ class TheDiscordListTest {
 
         assertEquals(Set.of(2L << 22, 6L << 22, otherShard), bot.guilds);
         assertEquals(Set.of(0), bot.localShards());
+    }
+
+    @Test
+    void aDisconnectedClientStopsThePublishers() throws Exception {
+        Autoposter poster = Autoposter.create("tdl_token", new AutopostOptions(), "ua",
+                new TheDiscordList.D4jBot(group(1), null));
+        CountDownLatch closed = new CountDownLatch(1);
+        poster.onClose(closed::countDown);
+        Sinks.Empty<Void> disconnect = Sinks.empty();
+
+        TheDiscordList.closeWhenDone(disconnect.asMono(), poster);
+        assertEquals(1, closed.getCount());
+
+        disconnect.tryEmitEmpty();
+        assertTrue(closed.await(5, TimeUnit.SECONDS));
     }
 
     @Test

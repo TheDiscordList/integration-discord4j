@@ -17,6 +17,7 @@ import discord4j.rest.RestClient;
 import reactor.core.Disposable;
 import reactor.core.Disposables;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -93,9 +94,15 @@ public final class TheDiscordList {
                         .subscribe(guild -> bot.guilds.add(guild.getId().asLong()), error -> {}),
                 botId.subscribe(starter::botId, error -> poster.warnOnce("bot-id", "Could not read the application id ("
                         + ApiClient.describe(error) + "). Pass AutopostOptions.botId.")),
-                Mono.delay(UNRESOLVED_WARNING).subscribe(tick -> starter.warnIfUnresolved()));
+                Mono.delay(UNRESOLVED_WARNING).subscribe(tick -> starter.warnIfUnresolved()),
+                closeWhenDone(client.onDisconnect(), poster));
         poster.onClose(subscriptions::dispose);
         return poster;
+    }
+
+    /** Without this a live JVM keeps beating for a client that logged out. Closing can block, so not on a gateway thread. */
+    static Disposable closeWhenDone(Mono<Void> disconnect, Autoposter poster) {
+        return disconnect.publishOn(Schedulers.boundedElastic()).subscribe(null, error -> poster.close(), poster::close);
     }
 
     /**
