@@ -64,7 +64,7 @@ class TheDiscordListTest {
 
         assertEquals(List.of(
                 Map.of("id", 0, "status", "ready", "latency_ms", 42L, "guilds", 2),
-                Map.of("id", 1, "status", "resuming", "guilds", 1)), bot.shards());
+                Map.of("id", 1, "status", "resuming")), bot.shards());
         assertNull(bot.serverCount(), "a shard mid-resume means a partial cache");
 
         second.set(State.CONNECTED);
@@ -77,8 +77,21 @@ class TheDiscordListTest {
         bot.seen.add(1);
 
         assertEquals(Set.of(0, 1), bot.localShards());
-        assertEquals(Map.of("id", 1, "status", "disconnected", "guilds", 0), bot.shards().get(1));
+        assertEquals(Map.of("id", 1, "status", "disconnected"), bot.shards().get(1));
         assertNull(bot.serverCount());
+    }
+
+    @Test
+    void zeroGuildsCountOnlyOnceReadyHasSaidSo() {
+        TheDiscordList.D4jBot bot = new TheDiscordList.D4jBot(group(1, gateway(() -> State.CONNECTED, 5)), null);
+
+        assertEquals(List.of(Map.of("id", 0, "status", "ready", "latency_ms", 5L)), bot.shards());
+        assertNull(bot.serverCount());
+
+        bot.ready(new ReadyEvent(null, ShardInfo.create(0, 1), null, null, Set.of()));
+
+        assertEquals(List.of(Map.of("id", 0, "status", "ready", "latency_ms", 5L, "guilds", 0)), bot.shards());
+        assertEquals(0, bot.serverCount());
     }
 
     @Test

@@ -177,6 +177,8 @@ public final class TheDiscordList {
         final RestClient rest;
         final Set<Long> guilds = ConcurrentHashMap.newKeySet();
         final Set<Integer> seen = ConcurrentHashMap.newKeySet();
+        /** Shards whose READY this client caught. One attached after it sees its guilds trickle in, so 0 proves nothing. */
+        final Set<Integer> readied = ConcurrentHashMap.newKeySet();
 
         D4jBot(GatewayClientGroup group, RestClient rest) {
             this.group = group;
@@ -207,6 +209,7 @@ public final class TheDiscordList {
                 guilds.add(guild.getId().asLong());
             }
             seen.add(index);
+            readied.add(index);
         }
 
         @Override
@@ -222,7 +225,7 @@ public final class TheDiscordList {
                 Optional<GatewayClient> client = group.find(index);
                 Long latency = client.map(gateway -> gateway.getResponseTime().toMillis()).filter(ms -> ms > 0).orElse(null);
                 String status = client.map(D4jBot::status).orElse("disconnected");
-                reports.add(Bot.shard(index, status, latency, perShard[index]));
+                reports.add(Bot.shard(index, status, latency, perShard[index] > 0 || readied.contains(index) ? perShard[index] : null));
             }
             return reports;
         }
@@ -235,7 +238,7 @@ public final class TheDiscordList {
                     return null;
                 }
             }
-            return guilds.size();
+            return guilds.isEmpty() && readied.isEmpty() ? null : guilds.size();
         }
 
         @Override
