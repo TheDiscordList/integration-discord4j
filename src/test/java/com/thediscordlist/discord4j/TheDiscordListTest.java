@@ -49,9 +49,9 @@ class TheDiscordListTest {
         assertEquals("connecting", TheDiscordList.status(State.RECONNECTING));
         assertEquals("resuming", TheDiscordList.status(State.START_RESUMING));
         assertEquals("resuming", TheDiscordList.status(State.RESUMING));
-        assertEquals("disconnected", TheDiscordList.status(State.DISCONNECTING));
+        assertEquals("resuming", TheDiscordList.status(State.DISCONNECTING));
         assertEquals("disconnected", TheDiscordList.status(State.DISCONNECTED));
-        assertEquals("disconnected", TheDiscordList.status(null));
+        assertEquals("connecting", TheDiscordList.status(null));
     }
 
     @Test

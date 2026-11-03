@@ -112,12 +112,13 @@ public final class TheDiscordList {
 
     static String status(GatewayConnection.State state) {
         if (state == null) {
-            return "disconnected";
+            return "connecting";
         }
         return switch (state) {
             case CONNECTED -> "ready";
-            case START_RESUMING, RESUMING -> "resuming";
-            case DISCONNECTING, DISCONNECTED -> "disconnected";
+            // DISCONNECTING is every dropped socket, before Discord4J picks a retry or a stop.
+            case START_RESUMING, RESUMING, DISCONNECTING -> "resuming";
+            case DISCONNECTED -> "disconnected";
             default -> "connecting";
         };
     }
@@ -186,7 +187,7 @@ public final class TheDiscordList {
             return Math.max(group.getShardCount(), 1);
         }
 
-        /** Every shard this process has run. One leaves the group while it reconnects, but it is still ours. */
+        /** Every shard this process has run. One leaves the group only when it stops for good, and is still ours. */
         SortedSet<Integer> localShards() {
             int total = shardCount();
             for (int index = 0; index < total; index++) {
