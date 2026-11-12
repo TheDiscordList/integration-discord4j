@@ -12,6 +12,7 @@ import discord4j.gateway.GatewayConnection.State;
 import discord4j.gateway.ShardInfo;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
+import reactor.core.publisher.Sinks;
 
 import java.lang.reflect.Proxy;
 import java.time.Duration;
@@ -19,10 +20,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TheDiscordListTest {
 
@@ -49,9 +53,9 @@ class TheDiscordListTest {
         assertEquals("connecting", TheDiscordList.status(State.RECONNECTING));
         assertEquals("resuming", TheDiscordList.status(State.START_RESUMING));
         assertEquals("resuming", TheDiscordList.status(State.RESUMING));
-        assertEquals("disconnected", TheDiscordList.status(State.DISCONNECTING));
+        assertEquals("resuming", TheDiscordList.status(State.DISCONNECTING));
         assertEquals("disconnected", TheDiscordList.status(State.DISCONNECTED));
-        assertEquals("disconnected", TheDiscordList.status(null));
+        assertEquals("connecting", TheDiscordList.status(null));
     }
 
     @Test
@@ -64,7 +68,7 @@ class TheDiscordListTest {
 
         assertEquals(List.of(
                 Map.of("id", 0, "status", "ready", "latency_ms", 42L, "guilds", 2),
-                Map.of("id", 1, "status", "resuming", "guilds", 1)), bot.shards());
+                Map.of("id", 1, "status", "resuming")), bot.shards());
         assertNull(bot.serverCount(), "a shard mid-resume means a partial cache");
 
         second.set(State.CONNECTED);
@@ -77,8 +81,21 @@ class TheDiscordListTest {
         bot.seen.add(1);
 
         assertEquals(Set.of(0, 1), bot.localShards());
-        assertEquals(Map.of("id", 1, "status", "disconnected", "guilds", 0), bot.shards().get(1));
+        assertEquals(Map.of("id", 1, "status", "disconnected"), bot.shards().get(1));
         assertNull(bot.serverCount());
+    }
+
+    @Test
+    void zeroGuildsCountOnlyOnceReadyHasSaidSo() {
+        TheDiscordList.D4jBot bot = new TheDiscordList.D4jBot(group(1, gateway(() -> State.CONNECTED, 5)), null);
+
+        assertEquals(List.of(Map.of("id", 0, "status", "ready", "latency_ms", 5L)), bot.shards());
+        assertNull(bot.serverCount());
+
+        bot.ready(new ReadyEvent(null, ShardInfo.create(0, 1), null, null, Set.of()));
+
+        assertEquals(List.of(Map.of("id", 0, "status", "ready", "latency_ms", 5L, "guilds", 0)), bot.shards());
+        assertEquals(0, bot.serverCount());
     }
 
     @Test
@@ -93,6 +110,21 @@ class TheDiscordListTest {
 
         assertEquals(Set.of(2L << 22, 6L << 22, otherShard), bot.guilds);
         assertEquals(Set.of(0), bot.localShards());
+    }
+
+    @Test
+    void aDisconnectedClientStopsThePublishers() throws Exception {
+        Autoposter poster = Autoposter.create("tdl_token", new AutopostOptions(), "ua",
+                new TheDiscordList.D4jBot(group(1), null));
+        CountDownLatch closed = new CountDownLatch(1);
+        poster.onClose(closed::countDown);
+        Sinks.Empty<Void> disconnect = Sinks.empty();
+
+        TheDiscordList.closeWhenDone(disconnect.asMono(), poster);
+        assertEquals(1, closed.getCount());
+
+        disconnect.tryEmitEmpty();
+        assertTrue(closed.await(5, TimeUnit.SECONDS));
     }
 
     @Test

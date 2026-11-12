@@ -17,6 +17,7 @@ import discord4j.rest.RestClient;
 import reactor.core.Disposable;
 import reactor.core.Disposables;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -93,9 +94,15 @@ public final class TheDiscordList {
                         .subscribe(guild -> bot.guilds.add(guild.getId().asLong()), error -> {}),
                 botId.subscribe(starter::botId, error -> poster.warnOnce("bot-id", "Could not read the application id ("
                         + ApiClient.describe(error) + "). Pass AutopostOptions.botId.")),
-                Mono.delay(UNRESOLVED_WARNING).subscribe(tick -> starter.warnIfUnresolved()));
+                Mono.delay(UNRESOLVED_WARNING).subscribe(tick -> starter.warnIfUnresolved()),
+                closeWhenDone(client.onDisconnect(), poster));
         poster.onClose(subscriptions::dispose);
         return poster;
+    }
+
+    /** Without this a live JVM keeps beating for a client that logged out. Closing can block, so not on a gateway thread. */
+    static Disposable closeWhenDone(Mono<Void> disconnect, Autoposter poster) {
+        return disconnect.publishOn(Schedulers.boundedElastic()).subscribe(null, error -> poster.close(), poster::close);
     }
 
     /**
@@ -112,12 +119,13 @@ public final class TheDiscordList {
 
     static String status(GatewayConnection.State state) {
         if (state == null) {
-            return "disconnected";
+            return "connecting";
         }
         return switch (state) {
             case CONNECTED -> "ready";
-            case START_RESUMING, RESUMING -> "resuming";
-            case DISCONNECTING, DISCONNECTED -> "disconnected";
+            // DISCONNECTING is every dropped socket, before Discord4J picks a retry or a stop.
+            case START_RESUMING, RESUMING, DISCONNECTING -> "resuming";
+            case DISCONNECTED -> "disconnected";
             default -> "connecting";
         };
     }
@@ -176,6 +184,8 @@ public final class TheDiscordList {
         final RestClient rest;
         final Set<Long> guilds = ConcurrentHashMap.newKeySet();
         final Set<Integer> seen = ConcurrentHashMap.newKeySet();
+        /** Shards whose READY this client caught. One attached after it sees its guilds trickle in, so 0 proves nothing. */
+        final Set<Integer> readied = ConcurrentHashMap.newKeySet();
 
         D4jBot(GatewayClientGroup group, RestClient rest) {
             this.group = group;
@@ -186,7 +196,7 @@ public final class TheDiscordList {
             return Math.max(group.getShardCount(), 1);
         }
 
-        /** Every shard this process has run. One leaves the group while it reconnects, but it is still ours. */
+        /** Every shard this process has run. One leaves the group only when it stops for good, and is still ours. */
         SortedSet<Integer> localShards() {
             int total = shardCount();
             for (int index = 0; index < total; index++) {
@@ -206,6 +216,7 @@ public final class TheDiscordList {
                 guilds.add(guild.getId().asLong());
             }
             seen.add(index);
+            readied.add(index);
         }
 
         @Override
@@ -221,7 +232,7 @@ public final class TheDiscordList {
                 Optional<GatewayClient> client = group.find(index);
                 Long latency = client.map(gateway -> gateway.getResponseTime().toMillis()).filter(ms -> ms > 0).orElse(null);
                 String status = client.map(D4jBot::status).orElse("disconnected");
-                reports.add(Bot.shard(index, status, latency, perShard[index]));
+                reports.add(Bot.shard(index, status, latency, perShard[index] > 0 || readied.contains(index) ? perShard[index] : null));
             }
             return reports;
         }
@@ -234,7 +245,7 @@ public final class TheDiscordList {
                     return null;
                 }
             }
-            return guilds.size();
+            return guilds.isEmpty() && readied.isEmpty() ? null : guilds.size();
         }
 
         @Override
