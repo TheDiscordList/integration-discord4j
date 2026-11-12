@@ -6,7 +6,7 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-## [0.2.1] - 2026-11-03
+## [0.2.1] - 2026-11-12
 
 ### Changed
 
@@ -26,6 +26,11 @@ All notable changes to this project are documented here. The format follows
 - `statsMinGap` cannot go below 60 seconds, `statsInterval` cannot go below
   `statsMinGap`, and the starting `heartbeatInterval` is clamped to 15-60
   seconds.
+- Discord4J's transitive Jackson (2.22.4), Netty (4.2.20.Final) and commons-io
+  (2.22.0) are lifted past known CVEs on the build and test classpath. Discord4J
+  stays `provided`, so your bot's own versions still decide what runs.
+- Maven build plugins, JUnit (6.1.3) and the CI actions are on their latest
+  releases.
 
 ### Fixed
 
